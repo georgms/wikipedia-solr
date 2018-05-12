@@ -1,0 +1,11 @@
+{
+  "name": "simplewiki-solr",
+  "version": "1.0.0",
+  "description": "Script to convert Wikipedia CirrusSearch dump to Solr input files",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
