@@ -9,7 +9,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "limited-request-queue": "^3.0.4",
     "request": "^2.85.0",
+    "request-promise": "^4.2.2",
     "wikijs": "^4.7.0"
   }
 }

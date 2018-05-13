@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 const request = require('request');
+const RequestQueue = require("limited-request-queue");
 
 const inputFile = 'simplewiki.json';
 const outputDir = 'output';
@@ -76,7 +77,13 @@ function readFiles() {
         input: fs.createReadStream(inputFile)
     });
 
-    rl.on('line', function (line) {
+    let queue = constructQueue();
+
+    let pages = [];
+
+    let counter = 0;
+
+    rl.on('line', (line) => {
         const data = JSON.parse(line);
 
         /* The Wikipedia dump also contains index entries. Skip these. */
@@ -84,40 +91,80 @@ function readFiles() {
             return;
         }
 
-        const page = {};
-        page.id = data.wikibase_item;
-        page.title_txt_en = data.title;
-        /* The opening text does not exist for all pages. */
-        page.opening_text_txt_en = data.opening_text || '';
-        page.text_txt_en = data.text;
-        page.headings_txt_en = data.heading;
-        page.popularity_score_d = data.popularity_score;
-        page.last_updated_dt = data.timestamp;
-        /* Add two fields categories, once for searching and once for faceting. */
-        page.categories_txts_en = data.category;
-        page.categories_ss = data.category;
+        counter++;
 
-        request.post({
-                url: solrHostAndCore + '/update/json/docs?commitWithin=1000&overwrite=true&wt=json',
-                json: page
-            },
-            function (error) {
-                if (error) {
-                    throw('Could not add ' + page.title_txt_en + ': ' + error);
-                } else {
-                    console.info('Successfully added ' + page.title_txt_en);
-                }
+        let page = buildSolrDocument(data);
+        pages.push(page);
+        if (pages.length % 1000 === 0) {
+            console.log(`Pushing ${pages.length} documents, now at ${counter}.`);
+            queue.enqueue({
+                url: solrHostAndCore + '/update/json/docs?commitWithin=10000&overwrite=true&wt=json',
+                json: pages
             });
+            pages = [];
+        }
 
-        /* Replace directory delimiter '/' in filename. */
-        let filename = page.title_txt_en.replace(/\//g, '_');
-
-        const outputFile = outputDir + '/' + filename + '.json';
-        fs.writeFile(outputFile, JSON.stringify(page, null, 2), (err) => {
-            if (err) {
-                throw err;
-            }
+        // writeOutputFile(page);
+    }).on('close', () => {
+        queue.enqueue({
+            url: solrHostAndCore + '/update/json/docs?commitWithin=10000&overwrite=true&wt=json',
+            json: pages
         });
-        console.debug('Wrote ' + outputFile);
+    })
+}
+
+function constructQueue() {
+    let counter = 0;
+
+    return new RequestQueue({maxSockets: 16}, {
+        item: function (input, done) {
+            request({url: input.url, json: input.json}, function (error) {
+                if (error) {
+                    throw('Could not add ' + input.json.title_txt_en + ': ' + error);
+                }
+
+                if (counter % 1000 === 0) {
+                    console.info(`${counter} docs added.`);
+                }
+                counter++;
+
+                //console.debug('Successfully added ' + input.json.title_txt_en);
+                done();
+            });
+        },
+        end: function () {
+            console.log('Queue completed!');
+        }
     });
+}
+
+function buildSolrDocument(data) {
+    const page = {};
+
+    page.id = data.wikibase_item;
+    page.title_txt_en = data.title;
+    /* The opening text does not exist for all pages. */
+    page.opening_text_txt_en = data.opening_text || '';
+    page.text_txt_en = data.text;
+    page.headings_txt_en = data.heading;
+    page.popularity_score_d = data.popularity_score;
+    page.last_updated_dt = data.timestamp;
+    /* Add two fields categories, once for searching and once for faceting. */
+    page.categories_txts_en = data.category;
+    page.categories_ss = data.category;
+
+    return page;
+}
+
+function writeOutputFile(page) {
+    /* Replace directory delimiter '/' in filename. */
+    let filename = page.title_txt_en.replace(/\//g, '_');
+
+    const outputFile = outputDir + '/' + filename + '.json';
+    fs.writeFile(outputFile, JSON.stringify(page, null, 2), (err) => {
+        if (err) {
+            throw err;
+        }
+    });
+    console.debug('Wrote ' + outputFile);
 }
