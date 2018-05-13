@@ -14,7 +14,7 @@ let results = {};
 let wikiClient = wiki({apiUrl: 'https://simple.wikipedia.org/w/api.php'});
 let promises = [];
 
-rl.on('line', query => {
+rl.on('line', (query) => {
     promises.push(wikiClient.search(query));
 }).on('close', () => {
     Promise.all(promises).then(searchResults => {
