@@ -13,6 +13,8 @@ let results = new Map();
 
 let promises = [];
 
+addLtrQparserToSolr();
+
 fs.readFile(inputFile, null, (error, contents) => {
     let data = JSON.parse(contents);
     Object.keys(data).forEach((query) => {
@@ -80,4 +82,32 @@ function calculateDcg(results, gradedRelevance) {
 function calculcateNdcg(results, gradedRelevance, idcg) {
     let dcg = calculateDcg(results, gradedRelevance);
     return dcg / idcg;
+}
+
+function addLtrQparserToSolr() {
+    /* Check if the LTRQParser is already configured. */
+    request(solrHostAndCore + '/config/queryParser').then((data) => {
+        let queryParsers = JSON.parse(data);
+        if (queryParsers.config.queryParser && queryParsers.config.queryParser.ltr) {
+            console.debug('Solr LTRQParser already configured.');
+        } else {
+            console.log('Adding Solr LTRQparser.');
+
+            request.post({
+                url: solrHostAndCore + '/config',
+                json: {
+                    "add-queryparser": {
+                        "name": "ltr",
+                        "class": "org.apache.solr.ltr.search.LTRQParserPlugin"
+                    }
+                }
+            }).then((data) => {
+                console.log('Successfully added Solr LTRQParser.');
+            }).catch((error) => {
+                console.error('Error adding Solr LTRQparser: ' + error);
+            });
+        }
+    }).catch((error) => {
+        throw('Could not check existence of LTRQParser: ' + error);
+    });
 }
