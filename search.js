@@ -13,7 +13,8 @@ let results = new Map();
 
 let promises = [];
 
-addLtrQparserToSolr();
+configureLtr();
+uploadLtrFeatures();
 
 fs.readFile(inputFile, null, (error, contents) => {
     let data = JSON.parse(contents);
@@ -54,7 +55,6 @@ fs.readFile(inputFile, null, (error, contents) => {
     });
 });
 
-
 function calculateGradedRelevance(results) {
     let gradedRelevance = new Map();
 
@@ -66,6 +66,7 @@ function calculateGradedRelevance(results) {
 
     return gradedRelevance;
 }
+
 
 function calculateDcg(results, gradedRelevance) {
     let dcg = 0;
@@ -84,7 +85,14 @@ function calculcateNdcg(results, gradedRelevance, idcg) {
     return dcg / idcg;
 }
 
+function configureLtr() {
+    addLtrQparserToSolr();
+    addLtrFeatureTransformer();
+}
+
 function addLtrQparserToSolr() {
+    console.debug('Checking for Solr LTRQparser.');
+
     /* Check if the LTRQParser is already configured. */
     request(solrHostAndCore + '/config/queryParser').then((data) => {
         let queryParsers = JSON.parse(data);
@@ -110,4 +118,67 @@ function addLtrQparserToSolr() {
     }).catch((error) => {
         throw('Could not check existence of LTRQParser: ' + error);
     });
+}
+
+function addLtrFeatureTransformer() {
+    console.debug('Checking for Solr LTR feature transformer.');
+
+    /* Check if the LTRQParser is already configured. */
+    request(solrHostAndCore + '/config/transformer').then((data) => {
+        let transformer = JSON.parse(data);
+        if (transformer.config.transformer && transformer.config.transformer.features) {
+            console.debug('Solr LTR feature transformer already configured.');
+        } else {
+            console.log('Adding Solr LTR feature transformer.');
+
+            request.post({
+                url: solrHostAndCore + '/config',
+                json: {
+                    "update-transformer": {
+                        "name": "features",
+                        "class": "org.apache.solr.ltr.response.transform.LTRFeatureLoggerTransformerFactory",
+                        "fvCacheName": "QUERY_DOC_FV" // TODO: Configure this cache.
+                    }
+                }
+            }).then((data) => {
+                console.log('Successfully added Solr LTR feature transformer.');
+            }).catch((error) => {
+                console.error('Error adding Solr LTR feature transformer: ' + error);
+            });
+        }
+    }).catch((error) => {
+        throw('Could not check existence of Solr LTR feature transformer: ' + error);
+    });
+}
+
+function uploadLtrFeatures() {
+    let model = [
+        {
+            "name": "documentRecency",
+            "class": "org.apache.solr.ltr.feature.SolrFeature",
+            "params": {
+                "q": "{!func}recip( ms(NOW,last_updated_dt), 3.16e-11, 1, 1)"
+            }
+        },
+        {
+            "name": "popularity",
+            "class": "org.apache.solr.ltr.feature.FieldValueFeature",
+            "params": {
+                "field": "popularity_score_d"
+            }
+        },
+        {
+            "name": "originalScore",
+            "class": "org.apache.solr.ltr.feature.OriginalScoreFeature",
+            "params": {}
+        }
+    ];
+
+    console.debug('Uploading LTR model.');
+
+    request.post({url: solrHostAndCore + '/schema/feature-store', json: model}).then((data) => {
+        console.log('Successfully uploaded LTR model.');
+    }).catch((error) => {
+        throw('Could not upload LTR model: ' + error);
+    })
 }
