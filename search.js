@@ -6,7 +6,7 @@ const request = require('request-promise');
 
 const inputFile = 'hits.json';
 
-let results = new Map();
+let results = {};
 
 let promises = [];
 
@@ -18,9 +18,7 @@ function fireSearches() {
     fs.readFile(inputFile, null, (error, contents) => {
         let data = JSON.parse(contents);
         Object.keys(data).forEach((query) => {
-            let wikiResults = data[query];
-
-            results.set(query, new Map());
+            results[query] = {};
 
             let storedResults = data[query];
             let gradedRelevance = calculateGradedRelevance(storedResults);
@@ -31,9 +29,20 @@ function fireSearches() {
         });
 
         Promise.all(promises).then(() => {
-            console.log(results);
+            displayResults(results);
         });
     });
+}
+
+function displayResults(results) {
+    let output = "query;solr;ltr\n";
+
+    output = Object.keys(results).reduce((output, query) => {
+        let metrics = results[query];
+        return output + [query, metrics.solr, metrics.ltr].join(';') + "\n";
+    }, output);
+
+    console.log(output);
 }
 
 function searchSolr(query, gradedRelevance, idcg) {
@@ -46,8 +55,7 @@ function searchSolr(query, gradedRelevance, idcg) {
             let matches = jsonBody.response.docs.map((doc) => {
                 return doc.title_txt_en[0];
             });
-            let ndcg = calculcateNdcg(matches, gradedRelevance, idcg);
-            results.get(query).set('solr', ndcg);
+            results[query]['solr'] = calculcateNdcg(matches, gradedRelevance, idcg);
         }
     }).catch((error) => {
         throw(error);
@@ -70,8 +78,7 @@ function searchSolrLtr(query, gradedRelevance, idcg) {
             let matches = jsonBody.response.docs.map((doc) => {
                 return doc.title_txt_en[0];
             });
-            let ndcg = calculcateNdcg(matches, gradedRelevance, idcg);
-            results.get(query).set('ltr', ndcg);
+            results[query]['ltr'] = calculcateNdcg(matches, gradedRelevance, idcg);
         }
     }).catch((error) => {
         throw(error);
