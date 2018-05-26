@@ -95,9 +95,13 @@ function buildTrainingData(results) {
 
         if ((typeof queryResult !== 'undefined') && (queryResult.featureResults.length > 0)) {
             message = queryResult.featureResults.reduce((output, featureResult) => {
-                if (featureResult) {
-                    return output + `${featureResult.rank} qid:${queryResult.qid + 1} ${featureResult.features} # ${queryResult.query} => ${featureResult.title}` + "\n";
+                let message = '';
+
+                if ((typeof featureResult !== 'undefined') && (featureResult.features.length > 0)) {
+                    message = `${featureResult.rank} qid:${queryResult.qid + 1} ${featureResult.features} # ${queryResult.query} => ${featureResult.title}` + "\n";
                 }
+
+                return output + message;
             }, '') + "#\n";
         }
 
