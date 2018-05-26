@@ -3,7 +3,7 @@ const readline = require('readline');
 const request = require('request');
 const RequestQueue = require("limited-request-queue");
 
-const inputFile = 'simplewiki-20180514-cirrussearch-content.json';
+const inputFile = 'simplewiki.json';
 
 const solr = require('./solr');
 
