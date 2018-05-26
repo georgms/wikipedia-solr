@@ -1,5 +1,6 @@
 const ltr = require('./ltr');
 const solr = require('./solr');
+const ndcg = require('./ndcg');
 
 const fs = require('fs');
 const request = require('request-promise');
@@ -20,13 +21,11 @@ function fireSearches() {
         Object.keys(data).forEach((query) => {
             results[query] = {};
 
-            let storedResults = data[query];
-            let gradedRelevance = calculateGradedRelevance(storedResults);
-            let idcg = calculateDcg(storedResults, gradedRelevance);
+            let idealRanking = data[query];
 
-            promises.push(searchSolr(query, gradedRelevance, idcg));
+            promises.push(searchSolr(query, idealRanking));
             promises = promises.concat(Object.keys(ltr.models).map((model) => {
-                return searchSolrLtr(query, gradedRelevance, idcg, model);
+                return searchSolrLtr(query, model, idealRanking);
             }));
         });
 
@@ -53,7 +52,7 @@ function displayResults(results) {
     console.log(output);
 }
 
-function searchSolr(query, gradedRelevance, idcg) {
+function searchSolr(query, idealRanking) {
     return request({
         url: solr.hostAndCore + '/browse',
         qs: {q: query, wt: 'json', qf: solr.qf, mm: '100%'}
@@ -63,14 +62,14 @@ function searchSolr(query, gradedRelevance, idcg) {
             let matches = jsonBody.response.docs.map((doc) => {
                 return doc.title_txt_en[0];
             });
-            results[query]['baseline'] = calculcateNdcg(matches, gradedRelevance, idcg);
+            results[query]['baseline'] = ndcg.calculate(matches, idealRanking);
         }
     }).catch((error) => {
         throw(error);
     });
 }
 
-function searchSolrLtr(query, gradedRelevance, idcg, model) {
+function searchSolrLtr(query, model, idealRanking) {
     return request({
         url: solr.hostAndCore + '/browse',
         qs: {
@@ -86,38 +85,11 @@ function searchSolrLtr(query, gradedRelevance, idcg, model) {
             let matches = jsonBody.response.docs.map((doc) => {
                 return doc.title_txt_en[0];
             });
-            results[query][model] = calculcateNdcg(matches, gradedRelevance, idcg);
+            results[query][model] = ndcg.calculate(matches, idealRanking);
         }
     }).catch((error) => {
         throw(error);
     });
 }
 
-function calculateGradedRelevance(results) {
-    let gradedRelevance = new Map();
 
-    for (let i = 0; i < results.length; i++) {
-        let storedResult = results[i];
-        /* Set relevance to 100, 50, 33 … */
-        gradedRelevance.set(storedResult, 100 / (i + 1));
-    }
-
-    return gradedRelevance;
-}
-
-function calculateDcg(results, gradedRelevance) {
-    let dcg = 0;
-
-    for (let i = 0; i < results.length; i++) {
-        let result = results[i];
-        let relevance = gradedRelevance.get(result) || 0;
-        dcg += relevance / Math.log2(i + 2);
-    }
-
-    return dcg;
-}
-
-function calculcateNdcg(results, gradedRelevance, idcg) {
-    let dcg = calculateDcg(results, gradedRelevance);
-    return dcg / idcg;
-}
