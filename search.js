@@ -11,6 +11,13 @@ let results = {};
 
 let promises = [];
 
+/**
+ * The k used for nDCG@k
+ *
+ * @type {number}
+ */
+const ndcgCutOff = 10;
+
 ltr.configureLtr().then(ltr.uploadLtrConfig).then(fireSearches);
 
 function fireSearches() {
@@ -62,7 +69,7 @@ function searchSolr(query, idealRanking) {
             let matches = jsonBody.response.docs.map((doc) => {
                 return doc.title_txt_en[0];
             });
-            results[query]['baseline'] = ndcg.calculate(matches, idealRanking);
+            results[query]['baseline'] = ndcg.calculate(matches, idealRanking, ndcgCutOff);
         }
     }).catch((error) => {
         throw(error);
@@ -85,7 +92,7 @@ function searchSolrLtr(query, model, idealRanking) {
             let matches = jsonBody.response.docs.map((doc) => {
                 return doc.title_txt_en[0];
             });
-            results[query][model] = ndcg.calculate(matches, idealRanking);
+            results[query][model] = ndcg.calculate(matches, idealRanking, ndcgCutOff);
         }
     }).catch((error) => {
         throw(error);
