@@ -1,4 +1,4 @@
-const ltrMethods = require('./ltr');
+const ltr = require('./ltr');
 const solr = require('./solr');
 
 const fs = require('fs');
@@ -10,7 +10,7 @@ let results = {};
 
 let promises = [];
 
-ltrMethods.configureLtr().then(ltrMethods.uploadLtrConfig).then(fireSearches);
+ltr.configureLtr().then(ltr.uploadLtrConfig).then(fireSearches);
 
 function fireSearches() {
     console.log('Firing searches');
@@ -25,7 +25,9 @@ function fireSearches() {
             let idcg = calculateDcg(storedResults, gradedRelevance);
 
             promises.push(searchSolr(query, gradedRelevance, idcg));
-            promises.push(searchSolrLtr(query, gradedRelevance, idcg));
+            promises = promises.concat(Object.keys(ltr.models).map((model) => {
+                return searchSolrLtr(query, gradedRelevance, idcg, model);
+            }));
         });
 
         Promise.all(promises).then(() => {
@@ -35,11 +37,17 @@ function fireSearches() {
 }
 
 function displayResults(results) {
-    let output = "query;solr;ltr\n";
+    let columns = ['query', 'baseline'];
+    columns = columns.concat(Object.keys(ltr.models));
+    let output = columns.join(';') + "\n";
 
     output = Object.keys(results).reduce((output, query) => {
         let metrics = results[query];
-        return output + [query, metrics.solr, metrics.ltr].join(';') + "\n";
+        let row = [query, metrics.baseline];
+        row = row.concat(Object.keys(ltr.models).map((model) => {
+            return metrics[model];
+        }));
+        return output + row.join(';') + "\n";
     }, output);
 
     console.log(output);
@@ -55,14 +63,14 @@ function searchSolr(query, gradedRelevance, idcg) {
             let matches = jsonBody.response.docs.map((doc) => {
                 return doc.title_txt_en[0];
             });
-            results[query]['solr'] = calculcateNdcg(matches, gradedRelevance, idcg);
+            results[query]['baseline'] = calculcateNdcg(matches, gradedRelevance, idcg);
         }
     }).catch((error) => {
         throw(error);
     });
 }
 
-function searchSolrLtr(query, gradedRelevance, idcg) {
+function searchSolrLtr(query, gradedRelevance, idcg, model) {
     return request({
         url: solr.hostAndCore + '/browse',
         qs: {
@@ -70,7 +78,7 @@ function searchSolrLtr(query, gradedRelevance, idcg) {
             wt: 'json',
             qf: solr.qf,
             mm: '100%',
-            rq: `{!ltr model=wikipedia reRankDocs=100 efi.text='\${q}'}`
+            rq: `{!ltr model=${model} reRankDocs=100 efi.text='\${q}'}`
         }
     }).then((body) => {
         let jsonBody = JSON.parse(body);
@@ -78,7 +86,7 @@ function searchSolrLtr(query, gradedRelevance, idcg) {
             let matches = jsonBody.response.docs.map((doc) => {
                 return doc.title_txt_en[0];
             });
-            results[query]['ltr'] = calculcateNdcg(matches, gradedRelevance, idcg);
+            results[query][model] = calculcateNdcg(matches, gradedRelevance, idcg);
         }
     }).catch((error) => {
         throw(error);
