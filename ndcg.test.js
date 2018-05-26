@@ -19,7 +19,13 @@ describe('NDCG', () => {
         expect(ndcg).toEqual(0.630929753571458);
     });
 
-    test('is not changed by additional results', () => {
+    test('respects cutoff', () => {
+        let actualRanking = ['a', 'c', 'b'];
+        let ndcg = ndcgMethods.calculate(actualRanking, idealRanking, 1);
+        expect(ndcg).toEqual(1);
+    });
+
+    test('is not affected by additional results without relevance', () => {
         let actualRanking = idealRanking;
         actualRanking.push('d');
 
