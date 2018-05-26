@@ -7,53 +7,7 @@ const inputFile = 'simplewiki-20180514-cirrussearch-content.json';
 
 const solr = require('./solr');
 
-addMultiValuedTextFieldToSolr();
-
-clearSolr();
-readFiles();
-
-function addMultiValuedTextFieldToSolr() {
-    /* Check if the field already exists. */
-    request(solr.hostAndCore + '/schema/dynamicFields/*_txts_en', function (error, response) {
-        if (error) {
-            throw('Could not check existence of Solr field: ' + error);
-        }
-        if (response.statusCode === 404) {
-            request.post({
-                url: solr.hostAndCore + '/schema', json: {
-                    'add-dynamic-field': {
-                        'name': '*_txts_en',
-                        'type': 'text_en',
-                        'stored': true,
-                        'indexed': true,
-                        'multiValued': true
-                    }
-                }
-            }, function (error) {
-                if (error) {
-                    throw('Could not add Solr field: ' + error);
-                } else {
-                    console.debug('Successfully added Solr field');
-                }
-            });
-        }
-    });
-}
-
-function clearSolr() {
-    request.post({
-        url: solr.hostAndCore + '/update?commitWithin=1000&overwrite=true&wt=json',
-        headers: {'Content-Type': 'text/xml'},
-        body:
-            '<add><delete><query>*:*</query></delete></add>'
-    }, function (error) {
-        if (error) {
-            throw('Could not clear Solr: ' + error);
-        } else {
-            console.debug('Successfully cleared Solr');
-        }
-    });
-}
+solr.addMultiValuedTextField().then(solr.clearIndex).then(readFiles());
 
 function readFiles() {
     const rl = readline.createInterface({
