@@ -7,7 +7,7 @@ const inputFile = 'simplewiki.json';
 
 const solr = require('./solr');
 
-solr.addMultiValuedTextField().then(solr.clearIndex).then(readFiles());
+solr.ensureMultiValuedTextFieldExists().then(solr.clearIndex).then(readFiles());
 
 function readFiles() {
     const rl = readline.createInterface({

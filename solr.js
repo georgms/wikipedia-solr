@@ -20,31 +20,38 @@ function clearIndex() {
     });
 }
 
-function addMultiValuedTextField() {
+function ensureMultiValuedTextFieldExists() {
     /* Check if the field already exists. */
-    request(solr.hostAndCore + '/schema/dynamicFields/*_txts_en', function (error, response) {
-        if (error) {
-            throw('Could not check existence of Solr field: ' + error);
-        }
+    return request({
+        url: hostAndCore + '/schema/dynamicfields/*_txts_en',
+        simple: false,
+        resolveWithFullResponse: true,
+        json: true
+    }).then((response) => {
         if (response.statusCode === 404) {
-            request.post({
-                url: solr.hostAndCore + '/schema', json: {
-                    'add-dynamic-field': {
-                        'name': '*_txts_en',
-                        'type': 'text_en',
-                        'stored': true,
-                        'indexed': true,
-                        'multiValued': true
-                    }
-                }
-            }, function (error) {
-                if (error) {
-                    throw('Could not add Solr field: ' + error);
-                } else {
-                    console.debug('Successfully added Solr field');
-                }
-            });
+            return addMultiValuedTextField();
         }
+    }).catch((error) => {
+        throw('Could not check existence of Solr field: ' + error);
+    });
+}
+
+function addMultiValuedTextField() {
+    return request.post({
+        url: hostAndCore + '/schema', json: {
+            'add-dynamic-field': {
+                'name': '*_txts_en',
+                'type': 'text_en',
+                'stored': true,
+                'indexed': true,
+                'multiValued': true
+            }
+        }
+    }).then(() => {
+        console.debug('Successfully added Solr field');
+    }).catch((error) => {
+        console.error('Bla');
+        throw('Could not add Solr field: ' + error);
     });
 }
 
@@ -54,5 +61,5 @@ module.exports = {
     qf: qf,
     escape: escape,
     clearIndex: clearIndex,
-    addMultiValuedTextField: addMultiValuedTextField
+    ensureMultiValuedTextFieldExists: ensureMultiValuedTextFieldExists
 };
