@@ -1,4 +1,4 @@
-const ndcgMethods = require('./ndcg');
+const ndcgMethods = require('../ndcg');
 
 describe('NDCG', () => {
     let idealRanking = ['a', 'b', 'c'];

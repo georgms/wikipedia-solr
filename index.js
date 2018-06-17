@@ -1,15 +1,33 @@
 const fs = require('fs');
 const readline = require('readline');
-const request = require('request');
-const RequestQueue = require("limited-request-queue");
+const request = require('request-promise');
+const RequestQueue = require('limited-request-queue');
 
 const inputFile = 'simplewiki.json';
+const batchSize = 1000;
 
 const solr = require('./solr');
 
-solr.ensureMultiValuedTextFieldExists().then(solr.clearIndex).then(readFiles());
+function run() {
+    solr.ensureMultiValuedTextFieldExists().then(solr.clearIndex).then(readAndImportFiles(inputFile, batchSize));
+}
 
-function readFiles() {
+function defer() {
+    let deferred = {
+        promise: null,
+        resolve: null,
+        reject: null
+    };
+
+    deferred.promise = new Promise((resolve, reject) => {
+        deferred.resolve = resolve;
+        deferred.reject = reject;
+    });
+
+    return deferred;
+}
+
+function readAndImportFiles(inputFile, batchSize) {
     const rl = readline.createInterface({
         input: fs.createReadStream(inputFile)
     });
@@ -19,6 +37,8 @@ function readFiles() {
     let pages = [];
 
     let counter = 0;
+
+    let readPromise = defer();
 
     rl.on('line', (line) => {
         const data = JSON.parse(line);
@@ -32,7 +52,7 @@ function readFiles() {
 
         let page = buildSolrDocument(data);
         pages.push(page);
-        if (pages.length % 1000 === 0) {
+        if (pages.length % batchSize === 0) {
             console.log(`Pushing ${pages.length} documents, now at ${counter}.`);
             queue.enqueue({
                 url: solr.hostAndCore + '/update/json/docs?commitWithin=10000&overwrite=true&wt=json',
@@ -41,34 +61,43 @@ function readFiles() {
             pages = [];
         }
     }).on('close', () => {
+        console.log(`Done reading input, pushing remaining ${pages.length} documents.`);
         queue.enqueue({
             url: solr.hostAndCore + '/update/json/docs?commitWithin=10000&overwrite=true&wt=json',
             json: pages
         });
-    })
+
+        /*
+         * We have to wait for the queue to finish before the promise is resolved.
+         *
+         * However, the queue may seem to have finished before that if the current requests are already handled but no
+         * new requests have been pushed onto the queue; then handlers.end would be called prematurely. To avoid this
+         * only install the handler after the last elements have been enqueued.
+         *
+         */
+        queue.handlers.end = (() => {
+            console.log('Request queue completed.');
+            readPromise.resolve();
+        });
+    });
+
+
+    return readPromise.promise;
 }
 
 function constructQueue() {
-    let counter = 0;
 
     return new RequestQueue({maxSockets: 16}, {
         item: function (input, done) {
-            request({url: input.url, json: input.json}, function (error) {
-                if (error) {
-                    throw('Could not add ' + input.json.title_txt_en + ': ' + error);
-                }
-
-                if (counter % 1000 === 0) {
-                    console.info(`${counter} docs added.`);
-                }
-                counter++;
+            request({
+                url: input.url, json: input.json
+            }).then((data) => {
 
                 //console.debug('Successfully added ' + input.json.title_txt_en);
                 done();
+            }).catch((error) => {
+                throw(error);
             });
-        },
-        end: function () {
-            console.log('Queue completed!');
         }
     });
 }
@@ -89,6 +118,13 @@ function buildSolrDocument(data) {
     /* Add two fields categories, once for searching and once for faceting. */
     page.categories_txts_en = data.category;
     page.categories_ss = data.category;
+    /* Build a catch-all column for spellchecking */
+    page._text_ = [data.title, data.opening_text || '', data.text, data.heading, data.category].join(' ');
 
     return page;
 }
+
+module.exports = {
+    run: run,
+    readAndImportFiles: readAndImportFiles
+};
